@@ -1,5 +1,10 @@
-start:
+backend:
 	php artisan serve
+
+frontend:
+	npm run dev
+
+# add docker for start
 
 lint:
 	composer exec --verbose phpcs -- --standard=PSR12 -n app routes tests 
