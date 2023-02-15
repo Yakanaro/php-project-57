@@ -14,14 +14,19 @@ return new class extends Migration
     public function up()
     {
         Schema::create(
-            'tasks', function (Blueprint $table) {
+            'tasks',
+            function (Blueprint $table) {
                 $table->id();
-                $table->string('name')->unique();
+                $table->string('name');
                 $table->text('description')->nullable();
-                $table->foreignId('status_id')->constrained('task_statuses');
-                $table->foreignId('created_by_id')->constrained('users');
-                $table->foreignId('assigned_to_id')->nullable()->constrained('users');
-                $table->timestamps();
+                $table->bigInteger('status_id');
+                $table->foreign('status_id')->references('id')->on('task_statuses');
+                $table->bigInteger('created_by_id');
+                $table->foreign('created_by_id')->references('id')->on('users');
+                $table->bigInteger('assigned_to_id')->nullable();
+                $table->foreign('assigned_to_id')->references('id')->on('users');
+                $table->timestamp('updated_at')->useCurrent();
+                $table->timestamp('created_at')->useCurrent();
             }
         );
     }

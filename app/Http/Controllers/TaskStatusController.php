@@ -2,53 +2,49 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreTaskStatusRequest;
-use App\Http\Requests\UpdateTaskStatusRequest;
-use App\Models\Task;
+use App\Http\Requests\{StoreTaskStatusRequest, UpdateTaskStatusRequest};
 use App\Models\TaskStatus;
-use Illuminate\Http\Request;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Contracts\View\{Factory, View};
+use Illuminate\Http\RedirectResponse;
 
 class TaskStatusController extends Controller
 {
     public function __construct()
     {
-        $this->authorizeResource(
-            TaskStatus::class,
-            'task_status',
-            [
-                'except' => ['index'],
-            ]
-        );
+        $this->authorizeResource(TaskStatus::class);
     }
-
     /**
      * Display a listing of the resource.
      *
-     * @return \Illuminate\View\View
+     * @return Application|Factory|View
      */
-    public function index()
+    public function index(): View|Factory|Application
     {
-        $taskStatuses = TaskStatus::orderBy('id', 'desc')->get();
-        return view('taskStatus.index', compact('taskStatuses'));
+        $statuses = TaskStatus::paginate();
+        return view('task_statuses.index', compact('statuses'));
     }
 
     /**
      * Show the form for creating a new resource.
      *
-     * @return \Illuminate\View\View
+     * @return Application|Factory|View
+     * @throws AuthorizationException
      */
-    public function create()
+    public function create(): View|Factory|Application
     {
-        return view('taskStatus.create');
+        $taskStatus = new TaskStatus();
+        return view('task_statuses.create', compact('taskStatus'));
     }
 
     /**
      * Store a newly created resource in storage.
      *
-     * @param  \App\Http\Requests\StoreTaskStatusRequest $request
-     * @return \Illuminate\Http\RedirectResponse
+     * @param  StoreTaskStatusRequest $request
+     * @return RedirectResponse
      */
-    public function store(StoreTaskStatusRequest $request)
+    public function store(StoreTaskStatusRequest $request): RedirectResponse
     {
         $data = $request->validated();
 
@@ -56,61 +52,53 @@ class TaskStatusController extends Controller
         $taskStatus->fill($data);
         $taskStatus->save();
 
-        flash(__('layout.task_status_create_flash_success'))->success();
-
-        return redirect()
-            ->route('task_statuses.index');
+        flash(__('messages.status.created'))->success();
+        return redirect()->route('task_statuses.index');
     }
 
     /**
      * Show the form for editing the specified resource.
      *
-     * @param  \App\Models\TaskStatus $taskStatus
-     * @return \Illuminate\View\View
+     * @param  TaskStatus $taskStatus
+     * @return Application|Factory|View
      */
-    public function edit(TaskStatus $taskStatus)
+    public function edit(TaskStatus $taskStatus): View|Factory|Application
     {
-        return view('taskStatus.edit', compact('taskStatus'));
+        return view('task_statuses.edit', compact('taskStatus'));
     }
 
     /**
      * Update the specified resource in storage.
      *
-     * @param  \App\Http\Requests\UpdateTaskStatusRequest $request
-     * @param  \App\Models\TaskStatus                     $taskStatus
-     * @return \Illuminate\Http\RedirectResponse
+     * @param  UpdateTaskStatusRequest $request
+     * @param  TaskStatus              $taskStatus
+     * @return RedirectResponse
      */
-    public function update(UpdateTaskStatusRequest $request, TaskStatus $taskStatus)
+    public function update(UpdateTaskStatusRequest $request, TaskStatus $taskStatus): RedirectResponse
     {
         $data = $request->validated();
-
         $taskStatus->fill($data);
         $taskStatus->save();
 
-        flash(__('layout.task_status_update_flash_success'))->success();
-
-        return redirect()
-            ->route('task_statuses.index');
+        flash(__('messages.status.updated'))->success();
+        return redirect()->route('task_statuses.index');
     }
 
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \App\Models\TaskStatus $taskStatus
-     * @return \Illuminate\Http\RedirectResponse
+     * @param  TaskStatus $taskStatus
+     * @return RedirectResponse
      */
-    public function destroy(TaskStatus $taskStatus)
+    public function destroy(TaskStatus $taskStatus): RedirectResponse
     {
-        $tasks = Task::where('status_id', $taskStatus->id);
-
-        if ($tasks->exists()) {
-            flash(__('layout.task_status_destroy_flash_error'))->error();
-        } else {
+        if (!$taskStatus->tasks()->exists()) {
             $taskStatus->delete();
-            flash(__('layout.task_status_destroy_flash_success'))->success();
+            flash(__('messages.status.deleted'))->success();
+            return redirect()->route('task_statuses.index');
         }
 
-        return redirect()
-            ->route('task_statuses.index');
+        flash(__('messages.status.unsuccessful'))->warning();
+        return redirect()->route('task_statuses.index');
     }
 }

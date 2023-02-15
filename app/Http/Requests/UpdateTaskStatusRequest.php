@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateTaskStatusRequest extends FormRequest
 {
@@ -16,6 +17,11 @@ class UpdateTaskStatusRequest extends FormRequest
         return true;
     }
 
+    public function messages(): array
+    {
+        return ['unique' => __('validation.status.unique')];
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
@@ -23,12 +29,8 @@ class UpdateTaskStatusRequest extends FormRequest
      */
     public function rules()
     {
-        /**
-         * @var object $taskStatus
-         */
-        $taskStatus = $this->route('task_status');
         return [
-        'name' => 'required|unique:task_statuses,name,' . $taskStatus->id
+            'name' => ['required', Rule::unique('task_statuses')->ignore($this->task_status)]
         ];
     }
 }

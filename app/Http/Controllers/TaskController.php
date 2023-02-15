@@ -2,203 +2,146 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreTaskRequest;
-use App\Http\Requests\UpdateTaskRequest;
-use App\Models\Task;
-use App\Models\TaskStatus;
-use App\Models\User;
-use DragonCode\Contracts\Cashier\Auth\Auth;
+use App\Http\Requests\{StoreTaskRequest, UpdateTaskRequest};
+use App\Models\{Label, Task, TaskStatus, User};
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\{Request, RedirectResponse};
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
+use Spatie\QueryBuilder\{AllowedFilter, QueryBuilder};
 
 class TaskController extends Controller
 {
     public function __construct()
     {
-        $this->authorizeResource(
-            Task::class,
-            'task',
-            [
-                'except' => ['index', 'show'],
-            ]
-        );
+        $this->authorizeResource(Task::class);
     }
 
     /**
      * Display a listing of the resource.
      *
-     * @return \Illuminate\View\View
+     * @param  Request $request
+     * @return View
      */
-    public function index()
+    public function index(Request $request): View
     {
-        $tasks = Task::select(
-            'task_statuses.name as status_name',
-            'tasks.id as id',
-            'tasks.name as name',
-            'tasks.created_at',
-            'task_creators.id as created_by_id',
-            'task_creators.name as created_by_name',
-            'task_appointee.name as assigned_to_name'
-        )
-            ->join(
-                'task_statuses',
-                function ($join) {
-                    $join->on('tasks.status_id', '=', 'task_statuses.id');
-                }
-            )
-            ->join(
-                'users as task_creators',
-                function ($join) {
-                    $join->on('tasks.created_by_id', '=', 'task_creators.id');
-                }
-            )
-            ->join(
-                'users as task_appointee',
-                function ($join) {
-                    $join->on('tasks.assigned_to_id', '=', 'task_appointee.id');
-                }
-            )
+        $statuses = TaskStatus::pluck('name', 'id');
+        $users = User::pluck('name', 'id');
+        $filters = [
+            'name',
+            AllowedFilter::exact('status_id'),
+            AllowedFilter::exact('created_by_id'),
+            AllowedFilter::exact('assigned_to_id')
+        ];
+        $tasks = QueryBuilder::for(Task::class)
+            ->allowedFilters($filters)
             ->orderBy('id')
-            ->paginate();
-        return view('task.index', compact('tasks'));
+            ->paginate(15);
+
+        $request->flash();
+
+        return view('tasks.index', compact('tasks', 'statuses', 'users', 'filters'));
     }
 
     /**
      * Show the form for creating a new resource.
      *
-     * @return \Illuminate\View\View
+     * @return View
      */
-    public function create()
+    public function create(): View
     {
-        $appointeeOptions = $this->getAppointeeOptions();
-        $taskStatusOptions = $this->getTaskStatusOptions();
+        $task = new Task();
+        $statuses = TaskStatus::pluck('name', 'id');
+        $users = User::pluck('name', 'id');
+        $labels = Label::pluck('name', 'id');
 
-        return view('task.create', compact('appointeeOptions', 'taskStatusOptions'));
+        return view('tasks.create', compact(['task', 'statuses', 'users', 'labels']));
     }
 
     /**
      * Store a newly created resource in storage.
      *
-     * @param  \App\Http\Requests\StoreTaskRequest $request
-     * @return \Illuminate\Http\RedirectResponse
+     * @param  StoreTaskRequest $request
+     * @throws ValidationException
      */
-    public function store(StoreTaskRequest $request)
+    public function store(StoreTaskRequest $request): RedirectResponse
     {
         $data = $request->validated();
+        $user = Auth::user();
 
         $task = new Task();
         $task->fill($data);
-        $task->created_by_id = $request->user()->id;
+        $task->creator()->associate($user);
         $task->save();
 
-        flash(__('layout.task_create_flash_success'))->success();
+        if (array_key_exists('labels', $data) && !is_null($data['labels'][0])) {
+            $task->labels()->sync($data['labels']);
+            $task->save();
+        }
 
-        return redirect()
-            ->route('tasks.index');
+        flash(__('messages.task.created'))->success();
+        return redirect()->route('tasks.index');
     }
 
     /**
      * Display the specified resource.
      *
-     * @param  \App\Models\Task $task
-     * @return \Illuminate\View\View
+     * @param  Task $task
+     * @return View
      */
-    public function show(Task $task)
+    public function show(Task $task): View
     {
-        $task = Task::select(
-            'tasks.id',
-            'tasks.name',
-            'tasks.description',
-            'task_statuses.name as status_name',
-        )
-            ->where('tasks.id', $task->id)
-            ->join(
-                'task_statuses',
-                function ($join) {
-                    $join->on('tasks.status_id', '=', 'task_statuses.id');
-                }
-            )
-            ->first();
-        return view('task.show', compact('task'));
+        return view('tasks.show', compact('task'));
     }
 
     /**
      * Show the form for editing the specified resource.
      *
-     * @param  \App\Models\Task $task
-     * @return \Illuminate\View\View
+     * @param  Task $task
+     * @return View
      */
-    public function edit(Task $task)
+    public function edit(Task $task): View
     {
-        $appointeeOptions = $this->getAppointeeOptions();
-        $taskStatusOptions = $this->getTaskStatusOptions();
-
-        return view('task.edit', compact('task', 'appointeeOptions', 'taskStatusOptions'));
+        $statuses = TaskStatus::pluck('name', 'id');
+        $users = User::pluck('name', 'id');
+        $labels = Label::pluck('name', 'id');
+        return view('tasks.edit', compact(['task', 'statuses', 'users', 'labels']));
     }
 
     /**
      * Update the specified resource in storage.
      *
-     * @param  \App\Http\Requests\UpdateTaskRequest $request
-     * @param  \App\Models\Task                     $task
-     * @return \Illuminate\Http\RedirectResponse
+     * @param  UpdateTaskRequest $request
+     * @param  Task              $task
+     * @return RedirectResponse
      */
-    public function update(UpdateTaskRequest $request, Task $task)
+    public function update(UpdateTaskRequest $request, Task $task): RedirectResponse
     {
         $data = $request->validated();
+        $labels = collect($request->input('labels'))
+            ->filter(fn ($label) => $label !== null);
 
+        $task->labels()->sync($labels);
         $task->fill($data);
         $task->save();
 
-        flash(__('layout.task_update_flash_success'))->success();
+        flash(__('messages.task.updated'))->success();
 
-        return redirect()
-            ->route('tasks.index');
+        return redirect()->route('tasks.index');
     }
 
     /**
      * Remove the specified resource from storage.
      *
-     * @param  \App\Models\Task $task
-     * @return \Illuminate\Http\RedirectResponse
+     * @param  Task $task
+     * @return RedirectResponse
      */
-    public function destroy(Task $task)
+    public function destroy(Task $task): RedirectResponse
     {
+        $task->labels()->detach();
         $task->delete();
 
-        flash(__('layout.task_destroy_flash_success'))->success();
-
-        return redirect()
-            ->route('tasks.index');
-    }
-
-    /**
-     * @return array<mixed>
-     */
-    private function getAppointeeOptions()
-    {
-        $appointees = User::select('id', 'name')
-            ->get();
-        return collect($appointees)
-            ->mapWithKeys(
-                function ($item) {
-                    return [$item['id'] => $item['name']];
-                }
-            )
-            ->toArray();
-    }
-
-    /**
-     * @return array<mixed>
-     */
-    private function getTaskStatusOptions()
-    {
-        $taskStatuses = TaskStatus::select('id', 'name')
-            ->get();
-        return collect($taskStatuses)
-            ->mapWithKeys(
-                function ($item) {
-                    return [$item['id'] => $item['name']];
-                }
-            )
-            ->toArray();
+        flash(__('messages.task.deleted'))->success();
+        return redirect()->route('tasks.index');
     }
 }

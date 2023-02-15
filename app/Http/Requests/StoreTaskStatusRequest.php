@@ -16,6 +16,11 @@ class StoreTaskStatusRequest extends FormRequest
         return true;
     }
 
+    public function messages(): array
+    {
+        return ['unique' => __('validation.status.unique')];
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
