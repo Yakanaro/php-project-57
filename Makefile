@@ -4,7 +4,6 @@ backend:
 frontend:
 	npm run dev
 
-
 lint:
 	composer exec --verbose phpcs -- --standard=PSR12 -n app routes tests 
 
