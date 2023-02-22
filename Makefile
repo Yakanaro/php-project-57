@@ -9,3 +9,4 @@ lint:
 
 lint-fix:
 	phpcbf --standard=PSR12 app routes tests
+
